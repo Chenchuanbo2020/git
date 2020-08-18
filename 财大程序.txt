@@ -1,0 +1,512 @@
+****************************************************
+*分布与参数
+cd F:\zuel
+use cps,clear
+preserve
+sample 100,count
+su wage
+mat m=r(mean)
+mat sd=r(sd)
+restore
+drawnorm y,m(m) sd(sd)
+tw (kdensity y) (kdensity wage)
+
+****************************************************
+*无偏估计
+clear
+scalar  b=int(10*uniform())+1   
+drawnorm  u,n(10)    //Eu=0       
+g  y=b+u 
+reg  y            //猜测b为多少
+scalar  list  b   //真实的b
+
+clear
+scalar  b=int(10*uniform())+1
+drawnorm  u,n(10)  m(10)    //Eu>0
+g  y=b+u 
+reg  y              //猜测b为多少
+scalar  list  b     //真实的b
+
+*****************************************************
+clear
+capt prog drop sd
+prog  sd
+drawnorm u,n(8) clear
+g  y=10+u
+reg  y
+scalar b=y[1]
+end
+simulate  _b b, reps (1000):sd    
+sum                  
+tw (kdensity _b) (kdensity _eq2)
+
+
+***********************************************
+*抽样分布
+clear
+capt prog drop sd
+prog  sd
+drawnorm u,n(8) clear
+g  y=10+u
+reg  y
+scalar b=y[1]
+end
+simulate  _b b, reps (1000):sd    
+sum                  
+tw (kdensity _b)   ///
+(function y=normalden(x,10,1/sqrt(8)),range(5 15))
+
+
+*********************************************************
+*假设检验
+*情形1：原假设正确H0=10,统计有多少次拒绝，多少次接受？
+capt   prog   drop   bb
+prog  bb
+drawnorm  u,n(10)  d  clear
+g   y=10+u
+quietly   reg   y
+end
+***将上述抽样试验进行100次，得到100个样本均值mean和标准误
+Simulate   _b   _se, reps (100) : bb
+gen   t=abs((_b-10)/_se)>invttail(9,0.025)
+tab   t   //其中的1表示在100次中拒绝原假设的次数。
+*情形2:原假设H0=5，则抽样进行假设检验如下
+capt   prog   drop  bb
+prog   bb
+drawnorm   u,n(10)  d   clear
+g   y=10+u
+quietly   reg   y
+end
+***将上述抽样试验进行100次，得到100个样本均值mean和标准误
+simulate   _b   _se, reps (100): bb
+gen   t=abs((_b-5)/_se)>invttail(9,0.025)
+tab   t
+*这时，我们100次地拒绝了原假设，认为原总体的均值不可能为5。
+
+**********************************************************
+use MRW1992,clear
+g  y=ln(Y85)
+g  s=ln(invest/100)
+g  n=ln(pop/100+0.05)   
+g  q=ln(school/100)              
+g  sn=s-n
+g  qn=q-n
+reg  y s  n  if N 
+reg  y  s  n  q  if N
+
+**********************************************************
+*大数定理
+clear
+set obs 1000
+g y=uniform()
+g n=_n
+g my=sum(y)/n
+line my n
+
+**********************************************************
+use nls80,clear
+reg lwage educ exp urban  iq    //OLS
+qui corr lwage educ exp urban iq,covar 
+mat V=r(C)
+qui tabstat lwage educ exp urban iq,save
+mat M=(r(StatTotal))'
+clear            //注意到原始数据已被消除
+corr2data x y z w v, n(935) cov(V) means(M)    			//生成虚拟数据
+reg *                   //回归结果与原始数据相同
+
+
+**********************************************************
+u AEJfigs,clear
+gen age = agecell - 21       
+gen over21 = agecell >= 21   //生成虚拟变量，相当于d
+gen age2 = age^2             //二次项
+gen over_age = over21*age    //交互项dx
+gen over_age2 = over21*age2  //二次项与d的交互项
+reg mva age age2 over21 over_age over_age2   //mva机动车事故死亡率
+predict exfitqi
+reg internal age age2 over21 over_age over_age2   //internal内因死亡率
+predict infitqi
+twoway (scatter  mva internal agecell) ///
+(line exfitqi infitqi agecell if agecell < 21) ///
+ (line exfitqi infitqi agecell if agecell >= 21), ///
+   legend(off) text(28 20.1 "Motor Vehicle Fatalities") ///
+    text(17 22 "Deaths from Internal Causes")
+	
+***********************************************************
+* Clark and Martorell(2014), "The Signaling Value of a High School Diploma," JPE
+u clark,clear
+rdplot receive minscore,weight(n)
+rdplot avgearning minscore,weight(n)
+
+
+************************************************************
+clear
+u hmda,clear
+global X "black pi_rat hse_inc ltv_med ltv_high ccred mcred pubrec denpmi  selfemp"  //主要自变量 
+global Z "single hischl probunmp"
+global D  "mcred3 mcred4 ccred3 ccred4 ccred5 ccred6"
+regress deny $X,r                                      //表第1列结果
+logit deny $X, r                                       //表第2列结果
+probit deny $X, r                                      //表第3列结果
+probit deny $X $Z, r                                   //表第4列结果
+test $Z                                                //联合显著性检验
+dprobit deny $X $Z, r                                  //计算边际效应，表中最后行第4列
+probit deny $X $Z $D condo, r                          //表第5列结果
+test $Z                                                //联合显著性检验
+test $D                                                //联合显著性检验
+dprobit deny $X $Z $D condo, r                         //计算边际效应，表中最后行第5列
+probit deny $X  $Z blk_pi blk_hse, r                   //表第5列结果
+test $Z                                                //联合显著性检验
+test black blk_pi blk_hse                              //联合显著性检验
+test blk_pi blk_hse
+dprobit deny $X  $Z blk_pi blk_hse, r                  //计算边际效应，注意不能直接计算
+probit deny $X  $Z blk_pi blk_hse, r
+tabstat  $X  $Z pi_rat hse_inc if e(sample),save       //计算均值，存入均值矩阵
+matrix m=(r(StatTotal),1 \ r(StatTotal),1)             //加入常数项
+matrix m[1,1]=0                                        //修改均值阵中元素，将第1行第1个元素black取为0
+matrix m[1,14]=0                                       //修改均值阵中元素，当black=0时，其交互项亦为0
+matrix m[1,15]=0                                       //同上
+matrix m[2,1]=1                                        //修改均值阵中元素，将第2行第1个元素black取为1
+mat z=e(b)*m'                                          //系数与均值阵相乘得到两个值
+dis normprob(z[1,2])-normprob(z[1,1])                  //两个值的概率差即为black的边际效应
+
+
+
+
+
+
+
+
+
+
+
+*上机1：伪随机数
+clear
+di  uniform()          //display显示结果，uniform()产生0-1均匀分布
+di  uniform()          //重复执行，得到另一个服从均匀分布的随机数
+*要注意的是，伪随机数实质上是按照一定的规律生成的。
+*如果给定基于生成伪随机数的初始数值（即set seed #），则对相同初始数值，生成的伪随机数序列完全一样。
+set  obs  5            //指定生成5个观察值
+set  seed  1234        //指定初始值，如果不指定，默认为123456789
+g   y1=uniform()
+set  seed   1234
+g  y2=uniform()
+g  y3=uniform()
+list                   //注意到y1与y2一样，但均与y3不同
+
+************************************************************************
+*上机2：各类分布
+
+*均匀分布
+clear
+set obs 10000
+g x=0
+qui forv i=1/100 {
+gen x`i'=uniform()    //生成服从均匀分布的随机数
+replace x=x+x`i'      //随机变量的和服从正态分布
+}
+hist x1    //均匀分布图
+hist x,norm     //正态分布数
+
+*卡方分布
+*卡方分布是若干个独立标准正态分布的平方和。
+clear
+set  obs  10000
+g  xsqr= (rnormal())^2         //标准正态分布平方和为卡方分布xsqr
+g  chi=rchi2(1)                //直接生成服从卡方分布的随机变量chi
+g  chi3=rchi2(3)               //生成服从自由度为3的卡方分布的随机变量chi3
+tw  (kdensity  xsqr)  (kdensity  chi )  (kdensity  chi3)
+
+*t分布是标准正态分布与卡方分布除自由度并取平方根后两者之比
+clear
+set obs 10000 
+g  t2=rt(2)                   //生成自由度为2的t分布随机变量
+*当自由度n趋于无穷时，t分布近似于标准正态分布
+tw (function y=tden(1,x), range(-4 4)) (function y=normalden(x), range(-4 4))(function y=tden(30,x), range(-4 4)) 
+di   invnormal(0.95)          //正态分布1.64 
+di   invttail(1000,0.05)      //自由度较大时，t分布逼近正态分布1.64
+
+*上机1：估计量与估计值
+clear
+sysuse auto, clear
+sample 10
+sum price
+*反复执行上面的三行命令，每一次我们都得到不同的均值。
+*同样，反复执行下述三行命令，每一次我们也得到不同的估计值
+drawnorm u,n(8) clear
+g  y=10+u
+reg   y     
+
+***************************************************
+*上机2：回归
+clear
+scalar  b=int(10*uniform())+1    //生成一个随机的b，事先不知
+drawnorm  u,n(10)                //Eu=0
+g  y=b+u 
+reg  y                           //猜测b为多少，看看实际结果与猜测之间的差异
+scalar  list  b                  //真实的b
+
+clear
+scalar  b=int(10*uniform())+1
+drawnorm  u,n(10)  m(10)         //Eu>0,存在系统误差
+g  y=b+u 
+reg  y                           //猜测b为多少，看看实际结果与猜测之间的差异
+scalar  list  b                  //真实的b
+
+******************************************************
+*上机3：估计量的抽样分布
+*有限总体抽样
+clear
+   set  obs  10000
+   g  y=10+rnormal()
+   save  temp,replace
+capt  prog  drop  sd
+prog  sd
+u  temp,clear
+sample  8,count
+reg  y
+end
+simulate  _b, reps (100):sd     //将上述抽样试验进行100次，得到100个均值和标准差
+sum                             //比较两者的均值和标准差。
+tw (kdensity _b) (function y=normalden(x,10,1/sqrt(8)),range(9 11))
+
+*无限总体抽样：下面的例题，首先生成一个均值为0，标准差为1的随机误差项，然后生成Y，再抽取8个样本，计算其均值。重复上述程序1000次，得到1000个估计值，做这些估计值的直方图，可以发现，它服从正态分布。
+capt prog drop sd
+prog  sd
+drawnorm u,n(8) clear          //8个期望为10的正态随机样本
+g  y=10+u
+reg  y
+end
+simulate  _b, reps (1000):sd    //将上述抽样试验进行1000次，得到1000个均值和标准差
+sum                             //比较两者的均值和标准差
+mean     _b         //mean计算标准误，su计算总体标准差
+tw (kdensity _b) (function y=normalden(x,10,1/sqrt(8)),range(5 15))
+
+***********************************************************
+*上机4：误差方差分布
+clear
+capt  prog  drop  sd
+prog  sd
+drawnorm  u,n(8)  clear             //8个期望为10的正态随机样本
+g  y=10+u
+reg  y
+scalar  s=7*(e(rmse))^2
+end
+simulate  s, reps (1000):sd         //将上述抽样试验进行1000次，得到1000个均值和标准差
+
+g  chi=rchi2(7)
+tw  (kdensity   _s) (kdensity  chi)
+
+
+**********************************************************************
+*上机5：区间估计
+capt  prog  drop  bb
+prog  bb
+drawnorm  u,n(10) d clear            //生成一个标准差o=10的正态随机变量样本，样本容量为100
+g  y=10+u
+quietly  reg  y
+end
+simulate  _b  _se, reps (100): bb     //将上述抽样试验进行100次，得到100个样本均值mean和标准误
+g  n=_n
+gen  tlow=_b-invttail(9,0.025)*_se    //95区间下限
+gen  thigh=_b+invttail(9,0.025)*_se   //95%区间上限
+gen   tsign=(tlow<10 & thigh>10)      //考察总体均值是否在子样本的95%置信区间内，如不在则标记为1，否则为零
+tab   tsign                           //统计没有包括总体均值的子样本95%置信区间个数
+tw  rcapsym  thigh  tlow  n, yline(10) || rcapsym  thigh  tlow  n  if thigh<10 | tlow>10
+ 
+**********************************************************************
+*上机6：假设检验
+*情形1：总体均值已知，为β=8。但我们假装不知道，却做出了对总体均值正确的原假设，认为它等于β0=10，则抽样进行假设检验如下
+drawnorm  y,n(100)  m(8)  sds(10)  d  clear   //生成一个均值为8,标准差为10的正态随机变量，作为研究总体
+quietly   sum   y
+di  "从样本计算t统计值为："(r(mean)-8)/(sqrt(100)*r(sd))
+di  "根据t统计量临界值为："as error invttail(99,0.025)
+*对这次实验，拒绝还是接受？
+
+*由于我们通常只取一次样，所以有可能碰巧得到的样本正好是导致我们拒绝真的原假设的样本。这时我们就会犯错误。然而，弃真错误的可能性比较小。在100次这样的抽样研究中，大概有5次左右。
+*将上述试验进行100次，统计一下有多少次拒绝，多少次接受？
+capt   prog   drop   bb
+prog  bb
+drawnorm  u,n(10)  d  clear
+g   y=10+u
+quietly   reg   y
+end
+Simulate   _b   _se, reps (100) : bb       //将上述抽样试验进行100次，得到100个样本均值mean和标准误
+gen   t=abs((_b-10)/_se)>invttail(9,0.025)
+tab   t                                    //其中的1表示在100次中拒绝原假设的次数。
+*情形2：总体均值已知为10。但我们假装不知道，并做出了对总体均值错误的原假设，如认为它等于5，则抽样进行假设检验如下
+capt   prog   drop  bb
+prog   bb
+drawnorm   u,n(10)  d   clear
+g   y=10+u
+quietly   reg   y
+end
+simulate   _b   _se, reps (100): bb       //将上述抽样试验进行100次，得到100个样本均值mean和标准误
+
+gen   t=abs((_b-5)/_se)>invttail(9,0.025)
+tab   t                                    //这时，我们100次地拒绝了原假设，认为原总体的均值不可能为5。
+
+
+***************************************************************************
+*上机2
+clear
+set  obs  8
+mata
+X=(1,2,3,4,5,6,7,8\2,0,0.5,8,4,10,3,5 \ 1,1,1,1,1,1,1,1)'   //非随机X，每次试验X都一样
+beta=(2\5\0.5)                                              //假设常参数β
+u=invnormal(uniform(8,1))                                   //生成随机误差，每次试验取不同值
+y=X*beta:+u                                                 //生成随机因变量Y，  
+n=rows(y)                                                   //观察值个数
+k=cols(X)                                                   //变量个数(包含截取项)        
+b=invsym(X'X)*X'y                                           //b为β的估计量，  
+yh=X*b                                                      //y的拟和值
+e=y-yh                                                      //定义残差
+RSS=e'e                                                     //定义残差平方和Residual
+rms=RSS/(n-k)                                               //除以自由度后的残差平方和
+rmse=sqrt(rms)                                              //误差标准差Root MSE
+V=rms*invsym(X'X)                                           //估计量方差阵的无偏估计
+se= sqrt(diagonal(V))                                       //b的标准误Std. Err.
+t=b:/se                                                      //估计量的t值
+p=2*ttail(n-k,t)                                             // P>|t|
+cl=b-se*invttail(n-k,0.025)                                  // [95% Conf. Interval] ， 95%置信区间的下限
+cr=b+se*invttail(n-k,0.025)                                   // [95% Conf. Interval] ， 95%置信区间的上限
+l=J(n,1,1)
+M=I(n)-l*l'/n                                                 //离差阵
+TSS=y'M*y                                                     //因变量方差
+ESS=yh'M*yh                                                    //已被X解释的方差
+R2=ESS/TSS                                                     // R-squared
+adjR2=1-RSS/(n-k)/(TSS/(n-1))                                  // adj R2
+F=ESS/(k-1)/(RSS/(n-k))                                        //整个模型F值
+P=Ftail(k-1,n-k,F)                                             // Prob > F: F值对应的P值
+R=(1,-1,0)                                                     //Wald检验β1=β2
+F2=(R*b)'*invsym(R*invsym(X'X)*R')*(R*b)/(RSS/(n-k))           //Wald检验F值
+P2=Ftail(1,n-k,F2)                                             //Wald检验P值
+st_store(.,st_addvar("double",("y","x1","x2","x0")),(y,X))     //转出数据
+("Model","Residual","Total")\ strofreal(( ESS, RSS,TSS))       //方差分析表
+("N" ,"F","P","R2","adjR2","rmse","F2","P2")\ strofreal((n,F,P,R2,adjR2,rmse,F2,P2))  //拟合优度                                 /*回归系数、标准误、t值、P值和置信区间*/
+("y","x1","x2","_cons")',(("b","se","t","p","cl","cr" ) \ strofreal((b,se,t,p,cl,cr )))         
+end                                                            //退出mata
+reg y x1  x2                                                   //stata回归命令
+test  x1=x2                                                    //Wald检验F值和P值
+return list
+
+*****************************************************************************
+*上机3
+clear
+use  http://www.ssc.wisc.edu/~bhansen/econometrics/MRW1992.dta,clear
+g  y=ln(Y85)                            //生成因变量 
+g  s=ln(invest/100)                     //储蓄率对数
+g  n=ln(pop/100+0.05)                   //人口增长率取对数
+g  q=ln(school/100)                     //人力资本
+g  sn=s-n
+g  qn=q-n
+reg  y s  n  if N                  //表1第1列：98个非石油输出国
+test s+n=0                         //约束检验：表的倒数第三行
+reg  y s  n  if I                  //表1第2列：75个中等收入国家
+test s+n=0
+reg  y s  n  if O                  //表1第3列：22个OECD国家
+test s+n=0
+**受限回归         
+reg  y   sn  if  N                 //表中第1列第11-14行
+reg  y   sn  if  I
+reg  y   sn  if  O
+**非线性回归直接估计a
+nl (y= {a0} + {a}/(1-{a})*sn) if N, initial(a0 7 a 1/3)  //表中最后一行
+nl (y= {a0} + {a}/(1-{a})*sn) if I, initial(a0 7 a 1/3) 
+nl (y= {a0} + {a}/(1-{a})*sn) if O, initial(a0 7 a 1/3)
+******Table2
+reg  y  s  n  q  if N
+est store  N                         //储存估计结果
+reg  y  s  n  q  if I
+est store I
+reg  y  s  n  q  if O
+est store  O
+capt ssc install outreg2
+outreg2 [N I O] using temp.doc, replace  dec(2)   //输出结果到word文档
+reg  y  sn  qn if N                               //表2中的受限回归
+test  sn=qn                                       //联合检验
+reg  y  sn  qn if I
+test  sn=qn
+reg y  sn  qn  if O
+test  sn=qn
+nl (y= {a0} + {a}/(1-{a}-{b})*sn+{b}/(1-{a}-{b})*qn) if N, initial(a0 7 a 1/3 b 1/3)    //表2中最后4行
+nl (y= {a0} + {a}/(1-{a}-{b})*sn+{b}/(1-{a}-{b})*qn) if I, initial(a0 7 a 1/3 b 1/3)    //表2中最后4行
+nl (y= {a0} + {a}/(1-{a}-{b})*sn+{b}/(1-{a}-{b})*qn) if O, initial(a0 7 a 1/3 b 1/3)    //表2中最后4行
+
+
+
+*上机1：大数定理
+*下面的模拟表明，0-1分布的均值随样本的增大，收敛到其均值p
+clear
+set obs 1000
+g x=uniform()>0.3                 //0-1分布
+g n=_n
+g Eu=sum(x)/n
+line Eu n
+
+****************************************
+*上机2：多维大数定理
+*下面的模拟一个3维随机向量（k=3），该随机向量中的每个元素均服从取值为1，2，3，4，5，6的均匀分布（骰子），即取1到6的每个值的概率均为1/6。该三维随机向量与其转置向量的乘积构成三阶方阵，该方阵的主对线为二阶原点矩，理论期望值为（1*1+2*2+…+6*6）/6。非对角线为二阶原点协方差，即两两相乘后的均值，理论期望值为12.25。
+clear
+mata
+a=(1,2,3,4,5,6) 
+a*a'/6
+sum(a'*a)/36
+
+y=J(3,3,0)
+for  (i=1; i<=10; i++)  {
+x=trunc(6*uniform(3,1):+1) 
+y=y+x*x'
+}
+y:/10
+
+y=J(3,3,0)
+for  (i=1; i<=100; i++)  {
+x=trunc(6*uniform(3,1):+1) 
+y=y+x*x'
+}
+y:/100
+
+y=J(3,3,0)
+for  (i=1; i<=100000; i++)  {
+x=trunc(6*uniform(3,1):+1) 
+y=y+x*x'
+}
+y:/100000
+end
+*通过改变循环次数，比如从10次，100次，10000次，可以发现，最终均值越来越收敛到理论期望值。之所以收敛，是因为模型中计算的实际上是均值，只要期望存在，根据大数定理，它收敛到期望。
+
+**********************************************************************
+*上机3：已知均值和方差阵的虚拟数据回归
+bcuse nls80,clear
+mata
+W=st_data(.,("lwage educ exp urban  iq"))
+st_matrix("V", variance(W) )                    //将mata方差阵转为stata矩阵
+st_matrix("M", mean(W))
+end
+reg lwage educ exp urban  iq
+clear                                           //注意到原始数据已被消除
+corr2data x y z w v, n(935) cov(V) means(M)     //生成虚拟数据
+reg *                                           //回归结果与原始数据相同
+
+*********************************************************************
+*上机4：中心极限定理
+*模拟一个指数分布，当样本n分别为1、3、30和100时取其均值，将上述取均值过程重复1000次，得到1000个均值样本，并绘出其核估计图，可以看出随着样本增加，均值越来越逼近正态分布。
+clear
+mata
+y=(rexponential(1,1000,10) \ mean(rexponential(3,1000,10)) \ mean(rexponential(30,1000,10)) \ mean(rexponential(100,1000,10)))'
+end
+getmata (y*)=y
+tw (kdensity y1) (kdensity y2) (kdensity y3) (kdensity y4)
+
+*来自不同分布：均匀分布、logistic分布、指数分布和泊松分布的五个样本的和
+clear
+mata 
+y=4*runiform(1000,1), rlogistic(1000,1, 2,1) ,rexponential(1000,1,2), rpoisson(1000,1,2),4*runiform(1000,1)+ rlogistic(1000,1, 2,1)+rexponential(1000,1,2)+ rpoisson(1000,1,2)
+end
+getmata (y*)=y
+tw (kdensity y1) (kdensity y2) (kdensity y3) (hist y4) (kdensity y5)
+kdensity y5,norm                               //相当接近正态分布
+
+
+
